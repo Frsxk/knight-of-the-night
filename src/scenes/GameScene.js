@@ -26,6 +26,7 @@ export default class GameScene extends Phaser.Scene {
     this.overlapTime = 0
     this.overlap = false
     this.boss = undefined
+    this.event = undefined
   }
 
   preload() {
@@ -61,18 +62,18 @@ export default class GameScene extends Phaser.Scene {
     this.player = this.createPlayer()
     this.add.image(this.halfWidth + 185, this.halfHeight + 30, "ui", 121).setScale(3.4) // boss graveyard
 
-    this.enemies = this.physics.add.group({
-      classType: EnemyPhysics,
-      maxSize: 10,
-      runChildUpdate: true
-    })
+    // this.enemies = this.physics.add.group({
+    //   classType: EnemyPhysics,
+    //   maxSize: 10,
+    //   runChildUpdate: true
+    // })
 
-    this.time.addEvent({
-      delay: Phaser.Math.Between(3000, 5000),
-      callback: this.spawnEnemy,
-      callbackScope: this,
-      loop: true
-    })
+    // this.time.addEvent({
+    //   delay: Phaser.Math.Between(3000, 5000),
+    //   callback: this.spawnEnemy,
+    //   callbackScope: this,
+    //   loop: true
+    // })
 
     // this.physics.add.overlap(this.player, this.enemies, this.startOverlap, undefined, this)
   }
@@ -82,6 +83,8 @@ export default class GameScene extends Phaser.Scene {
       this.movePlayer(this.player, time)
     }
     this.physics.add.overlap(this.player, this.enemies, this.hitEnemy, undefined, this)
+    this.physics.add.overlap(this.player, this.boss, this.hitBoss, undefined, this)
+    
 
     this.updateOverlap()
   }
@@ -103,8 +106,22 @@ export default class GameScene extends Phaser.Scene {
 
     this.player.anims.play(`standby`, true)
 
+    this.enemies = this.physics.add.group({
+      classType: EnemyPhysics,
+      maxSize: 10,
+      runChildUpdate: true
+    })
+
+    this.event = this.time.addEvent({
+      delay: Phaser.Math.Between(3000, 5000),
+      callback: this.spawnEnemy,
+      callbackScope: this,
+      loop: true
+    })
+
     if (this.killLabel.getValue() == 100) {
       this.spawnBoss()
+      this.event.remove()
     }
   }
 
@@ -185,7 +202,6 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.cursors.space.isDown && time > this.lastAttack) {
       this.lastAttack = time + 150;
-      // this.hitEnemy()
       this.playerAttack()
     }
   }
@@ -201,6 +217,10 @@ export default class GameScene extends Phaser.Scene {
       enemy.die()
       this.killLabel.add(1)
       this.popText(this.time)
+    }
+
+    if (this.distance <= 10) {
+      this.physics.add.overlap(this.player, this.enemies, this.decreaseLife, undefined, this)
     }
   }
 
@@ -238,13 +258,14 @@ export default class GameScene extends Phaser.Scene {
         repeat: -1
     })
 
+    let num = Phaser.Math.Between(1, 3)
     const config = {
       speed: 100,
-      type: Phaser.Math.Between(0, 2) * 8,
+      type: `enemy${num}`,
       player: this.player,
     }
 
-    this.enemy = this.enemies.get(0, 0, `enemy`, config).setScale(2.5).setDepth(5).setCollideWorldBounds(true)
+    this.enemy = this.enemies.get(0, 0, `enemy`, config).setScale(2.5).setDepth(5).setCollideWorldBounds(true).anims.play(config.type, true)
 
     const enemyWidth = this.enemy.displayWidth
     const enemyHeight = this.enemy.displayHeight
@@ -266,15 +287,6 @@ export default class GameScene extends Phaser.Scene {
         this.enemy.spawn(this.scale.width, posY)
         break;
     }
-
-    // this.enemies.add(enemy)
-    // this.physics.moveToObject(enemy, this.player, config.speed)
-    
-    // let distanceX = this.player.x - enemy.y
-    // let distanceY = this.player.y - enemy.y
-    // let angle = Math.atan2(distanceY, distanceX)
-    // enemy.setVelocityX(Math.cos(angle) * config.speed)
-    // enemy.setVelocityY(Math.sin(angle) * config.speed)
   }
 
   spawnBoss() {
@@ -291,8 +303,41 @@ export default class GameScene extends Phaser.Scene {
 
     const angle = Phaser.Math.Angle.Between(this.boss.x, this.boss.y, this.player.x, this.player.y)
     this.boss.setVelocity(Math.cos(angle) * 100, Math.sin(angle) * 100)
+
+    if (this.boss.body.velocity.x < 0) {
+        this.boss.setFlipX(true)
+    } else {
+        this.boss.setFlipX(false)
+    }
+
   }
 
+  hitBoss(player, boss) {
+    let bossLife = 3
+
+    this.distance = Phaser.Math.Distance.Between(player.x, player.y, boss.x, boss.y);
+    
+    if (this.distance < 100 && this.cursors.space.isDown) {
+      bossLife -= 1
+      if (bossLife < 0) {
+        this.boss.destroy()
+
+        // win condition
+        const winStyle = {
+          fontSize: `60px`, color: `#a9adb7`, fontFamily: `Comic Sans MS, Comic Sans`
+        }
+        let winText = this.add.text(this.halfWidth, 150, `You Win!`, winStyle).setDepth(50)
+        winText.setX(this.halfWidth - winText.width * 0.5)
+        this.player.anims.play(`win`, true)
+        this.startGame = false
+      }
+    }
+    
+    if (this.distance <= 10) {
+      this.physics.add.overlap(this.player, this.boss, this.decreaseLife, undefined, this)
+    }
+  }
+  
   createLabel(x, y, enemyKilled) {
     if (this.startGame = false) {
       return
@@ -318,7 +363,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (frame == 0) {
       // game over
-      this.scene.start(`game-over-scene`, this.killLabel.getValue())
+      this.scene.start(`game-over-scene`, { killcount: this.killLabel.getValue() })
     }
   }
 
@@ -327,8 +372,12 @@ export default class GameScene extends Phaser.Scene {
       fontSize: `20px`, color: `#ffb8bf`, fontFamily: `Comic Sans MS, Comic Sans`, fontStyle: `italic`
     }
 
-    this.poppin.setText(`Kill ${Math.floor(100 - this.killLabel.getValue())} more to spawn The Boss!`).setX(this.halfWidth - this.poppin.width * 0.5).setVisible(true).setActive(true)
-    
+    if (this.killLabel.getValue() < 100) {
+      this.poppin.setText(`Kill ${Math.floor(100 - this.killLabel.getValue())} more to spawn The Boss!`).setX(this.halfWidth - this.poppin.width * 0.5).setVisible(true).setActive(true)
+    } else {
+      this.poppin.setText(`The Boss has spawned!`).setX(this.halfWidth - this.poppin.width * 0.5).setVisible(true).setActive(true)
+    }
+
     this.time.addEvent({
       delay: 2000,
       callback: () => { this.poppin.setVisible(false).setActive(false) },
@@ -345,9 +394,9 @@ export default class GameScene extends Phaser.Scene {
 
   updateOverlap() {
     if (this.overlap) {
-      let overlapDuration = this.time.now - Number(this.overlapTime)
+      let overlapDuration = this.time.now - this.overlapTime;
 
-      if (Number(this.overlapTime) >= 1000) {
+      if (this.overlapTime >= 1000) {
         this.decreaseLife()
         this.overlap = false
         this.overlapTime = 0
