@@ -23,6 +23,9 @@ export default class GameScene extends Phaser.Scene {
     this.distance = undefined
     this.poppin = undefined
     this.life = undefined
+    this.overlapTime = 0
+    this.overlap = false
+    this.boss = undefined
   }
 
   preload() {
@@ -33,7 +36,7 @@ export default class GameScene extends Phaser.Scene {
     this.load.spritesheet("ui", "images/colored_tilemap.png", { frameWidth: 8, frameHeight: 8 })
     this.load.spritesheet("map", "images/tilemap.png", { frameWidth: 16, frameHeight: 17.16 })
     this.load.spritesheet("wall", "images/wallsheet.png", { frameWidth: 16, frameHeight: 17 })
-    this.load.spritesheet("health", "images/health_bar.png", { frameWidth: 630, frameHeight: 179 })
+    this.load.spritesheet("health", "images/health_bar.png", { frameWidth: 629, frameHeight: 146.66 })
   }
 
   create() {
@@ -71,14 +74,16 @@ export default class GameScene extends Phaser.Scene {
       loop: true
     })
 
-    this.physics.add.overlap(this.player, this.enemies, this.decreaseLife, undefined, this)
-
+    // this.physics.add.overlap(this.player, this.enemies, this.startOverlap, undefined, this)
   }
 
   update(time) {
-    this.movePlayer(this.player, time)
-    this.physics.add.overlap(this.player, this.enemies,  this.hitEnemy, undefined, this)
-    
+    if (this.startGame = true) {
+      this.movePlayer(this.player, time)
+    }
+    this.physics.add.overlap(this.player, this.enemies, this.hitEnemy, undefined, this)
+
+    this.updateOverlap()
   }
 
   gameStart() {
@@ -86,7 +91,7 @@ export default class GameScene extends Phaser.Scene {
     this.title.destroy()
     this.player.setActive(true)
 
-    this.life = this.add.sprite(110, 45, `health`, 5).setScale(0.25).setDepth(10)
+    this.life = this.add.sprite(110, 60, `health`, 5).setScale(0.25).setDepth(10)
 
     this.poppin = this.add.text(this.halfWidth, 40, `0`, 
     { fontSize: `20px`, color: `#ffb8bf`, fontFamily: `Comic Sans MS, Comic Sans`, fontStyle: `italic` }
@@ -97,10 +102,18 @@ export default class GameScene extends Phaser.Scene {
     this.popText(this.time)
 
     this.player.anims.play(`standby`, true)
+
+    if (this.killLabel.getValue() == 100) {
+      this.spawnBoss()
+    }
   }
 
-  createPlayer() { // overlap!!!
-    const player = this.physics.add.sprite(this.halfWidth - 180, this.halfHeight, "knight").setSize(90, 90).setScale(1.2).setCollideWorldBounds(true).setDepth(999)
+  createPlayer() {
+    const player = this.physics.add.sprite(this.halfWidth - 180, this.halfHeight, "knight").setSize(90, 80).setScale(1.2).setCollideWorldBounds(true).setDepth(999).setOffset(50, 50)
+
+    if (this.startGame = false) {
+      return
+    }
 
     this.anims.create({
       key: `standby`,
@@ -184,7 +197,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.distance = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
     
-    if (this.distance < 40 && this.cursors.space.isDown) {
+    if (this.distance < 100 && this.cursors.space.isDown) {
       enemy.die()
       this.killLabel.add(1)
       this.popText(this.time)
@@ -264,6 +277,22 @@ export default class GameScene extends Phaser.Scene {
     // enemy.setVelocityY(Math.sin(angle) * config.speed)
   }
 
+  spawnBoss() {
+    this.boss = this.physics.add.sprite(this.halfWidth + 185, this.halfHeight + 30, `boss`, 0).setScale(2.5).setDepth(20).setCollideWorldBounds(true).setFlipX(true)
+
+    this.anims.create({
+      key: `bossanim`,
+      frames: this.anims.generateFrameNumbers(`boss`, { start: 0, end: 7 }),
+      frameRate: 10,
+      repeat: -1,
+    })
+
+    this.boss.anims.play(`bossanim`, true)
+
+    const angle = Phaser.Math.Angle.Between(this.boss.x, this.boss.y, this.player.x, this.player.y)
+    this.boss.setVelocity(Math.cos(angle) * 100, Math.sin(angle) * 100)
+  }
+
   createLabel(x, y, enemyKilled) {
     if (this.startGame = false) {
       return
@@ -279,12 +308,17 @@ export default class GameScene extends Phaser.Scene {
   }
 
   decreaseLife(player, enemy) {
+    // this.distance = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y)
+    let frame;
+
     enemy.die()
-    const frame = Number(this.life.frame.name)
+    frame = Number(this.life.frame.name)
     this.life.setFrame(frame - 1)
+    
 
     if (frame == 0) {
       // game over
+      this.scene.start(`game-over-scene`, this.killLabel.getValue())
     }
   }
 
@@ -300,5 +334,24 @@ export default class GameScene extends Phaser.Scene {
       callback: () => { this.poppin.setVisible(false).setActive(false) },
       callbackScope: this
     })
+  }
+
+  startOverlap() {
+    if (!this.overlap) {
+      this.overlap = true
+      this.overlapTime = this.time.now
+    }
+  }
+
+  updateOverlap() {
+    if (this.overlap) {
+      let overlapDuration = this.time.now - Number(this.overlapTime)
+
+      if (Number(this.overlapTime) >= 1000) {
+        this.decreaseLife()
+        this.overlap = false
+        this.overlapTime = 0
+      }
+    }
   }
 }
